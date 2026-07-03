@@ -124,7 +124,7 @@
 // is at this URL on page load and merge it into the deck below, so you can
 // push new cards to everyone just by updating that one file.
 // Leave blank to skip external sync and use only the bundled deck.
-const CARDS_SOURCE_URL = "https://raw.githubusercontent.com/Habi885/soc-drill/refs/heads/main/index.html";
+const CARDS_SOURCE_URL = "https://raw.githubusercontent.com/Habi885/soc-drill/refs/heads/main/cards.json";
 
 let CARDS = [
   {cat:"MDE", sev:"High", q:"MDE fires a Trojan:Win32/Wacatac.B!ml alert on a finance user's laptop, flagged file sits in Downloads with a .scr extension disguised as an invoice PDF.", a:"Check the file hash against threat intel first (VT/MDTI). Wacatac.ml detections are ML-based and have a known FP rate on packed/obfuscated legit installers, so verify: was the file actually executed (DeviceProcessEvents), did it spawn child processes or touch LSASS, and did the user actually download it from an external source (DeviceNetworkEvents). If quarantined pre-execution and hash is known-bad on VT with no execution evidence -> TP-blocked, close as remediated. If execution occurred with no follow-on process/network activity and hash is unknown -> escalate for sandbox detonation before closing."},
