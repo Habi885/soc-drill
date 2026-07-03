@@ -1,62 +1,500 @@
 [
   {
-    "cat": "MDCA",
-    "sev": "Medium",
-    "q": "MDCA raises an OAuth app consent alert: a user granted an unfamiliar third-party app 'read all mailbox items' and 'read files' permissions.",
-    "a": "Illicit consent grant is a well-known post-phishing technique. Check the app's publisher and verification status in Entra ID, check how many other users have granted it, and check MDCA's app risk score. If the app is unverified, has broad permissions, and was granted right after the user clicked a link in a phishing email, treat as TP -- revoke the app's consent org-wide and check the mailbox for exfil (forwarding rules, mail read via Graph API). If it's a known verified productivity app with a legitimate business reason, close as FP but note it for the app governance review."
-  },
-  {
-    "cat": "General",
+    "cat": "MDE",
     "sev": "High",
-    "q": "A new firewall rule alert shows a burst of failed SSLVPN logins from a single external IP against multiple usernames within 2 minutes.",
-    "a": "Pattern matches a credential-stuffing / brute-force attempt, not a single mistyped password. Check whether any of the attempts succeeded (a single success buried in a burst of failures is the highest priority to check first). Check if the source IP has prior reputation hits (MDTI/AbuseIPDB). If no successful logins, block the source IP at the firewall and close as TP-blocked. If a login succeeded, treat as a confirmed compromise -- force password reset and session revocation for that account immediately, and escalate."
-  },
-  {
-    "cat": "MDI",
-    "sev": "High",
-    "q": "MDI fires a 'Suspected Kerberoasting' alert -- a service account requested an unusually high number of TGS tickets in a short window.",
-    "a": "Kerberoasting targets service accounts because they often have weak or old passwords and elevated privileges. Check which account made the requests and whether it's a legitimate application doing bulk service-ticket work (some backup/monitoring tools do this). Check the source host -- is it the expected app server, or an unexpected workstation? Check the encryption type requested (RC4 downgrade requests are a stronger TP indicator, since attackers request weaker crypto to crack offline). If source host is unexpected or RC4 was requested from a workstation that shouldn't be doing this, treat as TP -- rotate the service account password and investigate the source host for compromise."
+    "q": "MDE fires Trojan:Win32/Wacatac.B!ml on a finance user's laptop; file sits in Downloads disguised as an invoice PDF with a .scr extension.",
+    "a": "Check the file hash against VT/MDTI first. Wacatac.ml is ML-based with a known FP rate on packed installers. Verify execution via DeviceProcessEvents, check for LSASS access or child processes, and check DeviceNetworkEvents for the download source. If quarantined pre-execution with a known-bad hash, close as TP-blocked/remediated. If executed with no follow-on activity and an unknown hash, escalate for sandbox detonation before closing."
   },
   {
     "cat": "MDE",
     "sev": "Medium",
-    "q": "An alert fires for 'Suspicious Scheduled Task Creation' on a server, task runs a PowerShell script at system startup with a randomized task name.",
-    "a": "Scheduled tasks are a classic persistence mechanism. Pull DeviceEvents for the exact task registration command and the InitiatingProcess. Check what the PowerShell script actually does -- decode any encoded commands. Randomized/nonsensical task names are a moderate suspicion signal but some legitimate software (installers, updaters) also generate random task names. Check whether the parent process is a known software installer vs an unrecognized binary. If the script contacts an external IP/domain or attempts credential access, treat as TP and isolate; if it maps to a known deployed application's updater behavior, close as FP but document the task name pattern for future reference."
+    "q": "ASR rule 'Block executable content from email client and webmail' triggers in Audit mode on a dev machine running a PowerShell deployment script.",
+    "a": "Audit mode never blocks anything -- confirm this first. Pull DeviceEvents for ActionType and InitiatingProcess. If source is a known deployment tool (SCCM, Intune) targeting a signed binary, it's FP -- consider a scoped exclusion if recurring. If parent process is outlook.exe or a browser rendering an attachment, treat as suspicious and check DeviceNetworkEvents for origin."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Medium",
+    "q": "AMSI reports a 'Suspicious PowerShell download' with base64 content and an AMSI bypass pattern.",
+    "a": "Don't trust AMSI's summary alone -- pull InitiatingProcessCommandLine and decode the base64 yourself. AMSI bypass logic (reflection-based patching) is a strong TP indicator regardless of the script's stated purpose. Cross-check DeviceNetworkEvents for C2-style connections right after execution. Legitimate admin one-liners rarely carry bypass logic -- if present, isolate and treat as TP."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Info",
+    "q": "'PossibleReverseShell' fires on a Linux server, initiating process ansible-connection or a Foreman agent.",
+    "a": "Classic FP pattern -- Ansible/Foreman legitimately open reverse-style ephemeral connections during orchestration. Confirm source IP is your known control server, confirm timing matches a scheduled run, confirm no commands ran outside playbook scope. If all confirmed, close as FP. Unrecognized source IP -- escalate immediately."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Medium",
+    "q": "macOS PUA detection for a torrent client or cracked installer.",
+    "a": "Check if MDE auto-quarantined. If yes, risk is contained -- document download source via DeviceFileEvents and close as remediated. If not auto-remediated, verify no follow-on beaconing to unusual domains; if genuinely just unwanted software, close as FP/PUA with a note for device compliance enforcement rather than an intrusion closure."
+  },
+  {
+    "cat": "MDE",
+    "sev": "High",
+    "q": "'Ransomware behavior detected' with automated remediation showing multiple files renamed with a new extension across a file share.",
+    "a": "Treat as a live incident -- speed over full analysis. Check if MDE auto-isolated the device; if not, isolate immediately to stop lateral encryption. Identify initiating account and check DeviceLogonEvents for how it authenticated. Check other devices touching the same share for the same pattern. Escalate immediately per IR playbook, don't wait for full root-cause."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Medium",
+    "q": "'Suspicious Scheduled Task Creation' on a server -- task runs PowerShell at startup with a randomized name.",
+    "a": "Scheduled tasks are a classic persistence mechanism. Pull the exact registration command and InitiatingProcess from DeviceEvents; decode any encoded PowerShell. Randomized names alone aren't conclusive -- some installers/updaters do this too. If the script contacts external infrastructure or attempts credential access, treat as TP and isolate; if it matches a known deployed app's updater behavior, close as FP but document the pattern."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Medium",
+    "q": "An alert fires for a process injecting into explorer.exe on a workstation, flagged as 'Process hollowing' behavior.",
+    "a": "Process hollowing is a well-known evasion technique with a low legitimate-use rate. Check the parent process and its digital signature -- unsigned or unusual parents raise suspicion sharply. Check DeviceImageLoadEvents for what modules got loaded post-injection. If the source binary is unsigned, freshly downloaded, and the injected process then reaches out externally, treat as TP and isolate. Legitimate use (some AV/EDR tooling itself hollows processes) is rare enough that this needs strong justification to close as FP."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Low",
+    "q": "MDE flags a 'LSASS access' alert from Task Manager (taskmgr.exe) opened by an IT admin with elevated rights.",
+    "a": "Taskmgr.exe can legitimately trigger LSASS access alerts when a user with debug privileges opens Task Manager with 'Run as administrator' and views process details -- this is a known benign trigger. Confirm the account is a legitimate IT admin, confirm no dump file was written to disk (check DeviceFileEvents for handle-to-file write), and confirm no follow-on credential-dumping tool (Mimikatz-style behavior) ran. If clean, close as FP; if a dump artifact appears, escalate as TP immediately."
+  },
+  {
+    "cat": "MDE",
+    "sev": "High",
+    "q": "A workstation shows outbound beaconing to a raw IP on a non-standard port (e.g. 4460) at regular intervals, flagged by MDE's network protection.",
+    "a": "Regular-interval beaconing to an unfamiliar IP:port is a strong C2 indicator. Check DeviceNetworkEvents for the interval consistency and payload size (consistent small payloads suggest heartbeat C2 traffic). Check MDTI/VT reputation on the destination IP. Check the initiating process -- unsigned or living-off-the-land binaries (rundll32, regsvr32) strengthen suspicion. If reputation is bad and beaconing is regular, isolate and treat as TP; escalate for full timeline reconstruction."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Medium",
+    "q": "A 'Suspicious PowerShell Execution Policy Bypass' alert fires from a Group Policy logon script.",
+    "a": "Execution policy bypass is commonly used legitimately by GPO logon scripts and deployment tooling, since -ExecutionPolicy Bypass is a standard flag for unattended scripts. Verify the script source is a known SYSVOL path and the script content matches your organization's known logon scripts. If content is unrecognized or the script was recently modified outside a change window, escalate. Otherwise close as FP -- expected GPO behavior."
+  },
+  {
+    "cat": "MDE",
+    "sev": "High",
+    "q": "MDE flags credential dumping behavior: a process reads LSASS memory and writes a file resembling a minidump.",
+    "a": "This is a high-confidence TP pattern regardless of process name, since legitimate LSASS memory dumps to disk are rare outside of Microsoft-signed crash-reporting tools. Check the process signature and path -- unsigned binaries in Temp/AppData strengthen the case sharply. Check where the dump file was written and whether it was subsequently moved or exfiltrated via DeviceNetworkEvents. Isolate the device immediately and treat as TP; assume credential compromise for any accounts that had recently logged onto that host."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Medium",
+    "q": "An alert shows a browser process spawning cmd.exe, which then spawns powershell.exe with an encoded command -- flagged as suspicious process tree.",
+    "a": "Browser-spawned command shells are a classic drive-by/malicious-download pattern, not normal browsing behavior. Decode the PowerShell command line to see the actual payload. Check DeviceNetworkEvents around the browser session for the page/download that triggered this. If the decoded command downloads and executes additional payloads, treat as TP and isolate; check for persistence artifacts (scheduled tasks, run keys) as follow-up."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Info",
+    "q": "A 'PsExec-like lateral movement' alert fires on a Friday night from an IT admin's account across three servers.",
+    "a": "PsExec-style tooling is legitimately used by admins for patching/config management, so timing and account context matter more than the tool itself. Check whether this aligns with a scheduled maintenance window (many orgs patch on weekends). Confirm the account is the expected admin and check DeviceLogonEvents for consistent authentication patterns across the three servers. If it aligns with known maintenance, close as FP; if the account shows any other anomaly (new device, odd source host), escalate."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Medium",
+    "q": "Antivirus detects and blocks a coin-miner (XMRig-style) on a build server, but MDE shows no follow-on network activity.",
+    "a": "Coin-miners are usually opportunistic rather than targeted, but their presence still indicates a security gap (how did it get there). Check DeviceFileEvents for how the miner arrived -- vulnerable exposed service, weak credentials, or a supply-chain package. Confirm the block was effective and no mining process is still running (DeviceProcessEvents). Close as TP-blocked but escalate the entry vector for remediation (e.g. patch the exposed service or rotate credentials) rather than treating it as fully resolved."
+  },
+  {
+    "cat": "MDO",
+    "sev": "High",
+    "q": "MDO flags a whaling email impersonating the CFO, sent to finance staff requesting an urgent wire transfer.",
+    "a": "Check SPF/DKIM/DMARC and the true return-path domain vs displayed name. Pull the URL/attachment detonation verdict. Check Threat Explorer for whether anyone clicked or replied. Note if ZAP already purged it org-wide. Because it targets an executive with a financial ask, close as TP-blocked/contained regardless of click-through, and flag the sender domain for blocklisting."
   },
   {
     "cat": "MDO",
     "sev": "Medium",
-    "q": "MDO's Safe Links flags a URL as malicious after a user already clicked it, and Threat Explorer shows the click was allowed before detonation completed.",
-    "a": "This is a real gap worth knowing: Safe Links sometimes allows the first click through before verdict processing finishes (time-of-click vs time-of-detonation lag). Don't assume 'flagged' means 'blocked' -- always check the actual click verdict and timestamp in Threat Explorer, not just the alert severity. If the click was allowed and the destination was later confirmed malicious, treat as TP with potential compromise -- check the endpoint for post-click activity via MDE (DeviceProcessEvents, DeviceNetworkEvents around that timestamp) rather than closing on the strength of the URL verdict alone."
+    "q": "A user reports phishing that MDO's automated investigation already marked 'No threats found.'",
+    "a": "Don't trust the automated verdict blindly -- engines miss well-crafted social-engineering emails with no malicious payload. Manually review headers for spoofing, check if the sending domain is newly registered (WHOIS/MDTI), and read the actual ask in the body. If it's a BEC-style request with no URL/attachment to detonate, override the verdict, mark TP (BEC), and submit for reporting/blocklisting."
   },
   {
-    "cat": "KQL/Hunting",
-    "sev": "Info",
-    "q": "You want to hunt for a specific IOC (a known-bad IP) across all NIB tenants at once in XSIAM using XQL, without writing 20 separate queries.",
-    "a": "Check whether the relevant datasets share a common field name for the source/destination IP across tenants (they often don't -- naming conventions vary by data source, e.g. firewall raw logs vs O365 logs vs EDR logs). Build a dataset reference first if you don't have one, mapping which field holds the IP in each dataset (this is exactly why maintaining a dataset field reference sheet pays off). Where fields align, a single query against a unified dataset or a UNION across datasets is possible; where they don't, you're better off running targeted per-dataset queries than forcing a fragile universal one."
-  },
-  {
-    "cat": "General",
+    "cat": "MDO",
     "sev": "Medium",
-    "q": "You get a GreyMatter DRP alert for a lookalike domain (typosquat) registered recently that mimics your company's brand.",
-    "a": "Check the domain's registration date (WHOIS/MDTI) -- very recent registration close to the alert date raises suspicion. Check if the domain currently resolves and what it hosts (use a sandboxed browser like ANY.RUN, never visit directly from a corporate endpoint). Check for MX records, which would indicate it's set up for phishing/BEC rather than just squatting. If it hosts a phishing kit or has active MX records, escalate for brand-protection takedown request and block at the email gateway/proxy. If it's parked with no active content and no MX, document and monitor -- close as informational with a recommendation to watch, since takedown requests for dormant lookalikes often get deprioritized anyway."
+    "q": "Safe Links flags a URL as malicious after a user already clicked it, and Threat Explorer shows the click was allowed before detonation completed.",
+    "a": "Safe Links can allow a first click before verdict processing finishes (time-of-click vs time-of-detonation lag). Don't assume 'flagged' means 'blocked' -- check the actual click verdict and timestamp. If the click was allowed and the destination was later confirmed malicious, treat as TP with potential compromise and check the endpoint via MDE for post-click activity rather than closing on URL verdict alone."
   },
   {
-    "cat": "MDE",
+    "cat": "MDO",
+    "sev": "Medium",
+    "q": "A Safe Attachments alert quarantines a macro-enabled Excel file sent from a known vendor's legitimate domain.",
+    "a": "Legitimate vendors do occasionally send macro-enabled files for real business reasons (automated reports, invoicing templates), so sender legitimacy alone isn't sufficient. Check the actual macro content via detonation sandbox results -- does it call out to external URLs, spawn shells, or just perform standard spreadsheet automation? Check if this vendor has sent similar files before without issue. If the macro is benign and vendor-consistent, release from quarantine and close as FP; if it contains obfuscated or network-calling code, keep quarantined and treat as TP even though the sender is 'known.'"
+  },
+  {
+    "cat": "MDO",
     "sev": "High",
-    "q": "MDE alert: 'Ransomware behavior detected' with automated remediation showing multiple files renamed with a new extension across a file share.",
-    "a": "Treat as a live incident, not a routine alert -- the priority is containment speed over full analysis. First check MDE's automated response status: was the device auto-isolated? If not, isolate immediately to stop lateral encryption via the share. Identify the initiating process and account, and check DeviceLogonEvents for how that account authenticated (compromised credentials vs local execution). Check other devices touching the same file share for the same rename pattern (lateral spread). This is an escalate-immediately scenario per your IR playbook -- notify SOC leads and NIB IT concurrently with containment, don't wait for full root-cause before escalating."
+    "q": "MDO detects a QR code phishing (quishing) attempt embedded in a PDF attachment targeting several executives.",
+    "a": "QR phishing is designed to evade text-based URL scanning since the malicious link is only visible as an image. Check if MDO's image-based URL detection actually decoded the QR and detonated the destination. Check Threat Explorer for whether any recipients' mobile devices (which typically scan QR codes, often off the monitored network) show any related activity. Treat as TP given the deliberate evasion technique and targeting of executives -- block the destination domain and educate targeted users, since QR phishing bypasses many standard controls by design."
+  },
+  {
+    "cat": "MDO",
+    "sev": "Medium",
+    "q": "An email from a compromised external partner's real email account (not spoofed) contains a malicious link -- SPF/DKIM/DMARC all pass because the domain is genuinely theirs.",
+    "a": "Passing authentication doesn't mean the email is safe -- it only means the sending domain is genuine, not that the account wasn't compromised. Check the actual URL/attachment detonation result independent of the sender's authentication status. Check if this partner has sent similar emails before, and check for unusual language/urgency inconsistent with prior correspondence. If detonation confirms malicious content, treat as TP -- this is a supply-chain/partner-compromise scenario, so notify the partner organization in addition to internal containment."
+  },
+  {
+    "cat": "MDO",
+    "sev": "Info",
+    "q": "MDO's anti-spoofing intelligence flags an email as 'unauthenticated sender' but it's actually a legitimate internal automated report from a service account.",
+    "a": "Some internal application/service accounts send mail through third-party relays that don't fully align with SPF records, triggering this flag. Check the actual originating IP against your known application server inventory. Check DKIM signature validity even if SPF is misaligned -- a valid DKIM signature from your domain is a stronger legitimacy signal than SPF alone. If the sending infrastructure is confirmed internal/known, close as FP and consider updating the SPF record to include that sender."
+  },
+  {
+    "cat": "MDO",
+    "sev": "Medium",
+    "q": "A phishing email uses a legitimate cloud file-sharing link (e.g. a real SharePoint/OneDrive share) to host a credential-harvesting page, so the URL itself isn't flagged as malicious.",
+    "a": "Attackers increasingly abuse legitimate cloud services precisely because the hosting domain has good reputation and evades URL blocklists. Check the actual content behind the share link via sandboxed detonation rather than trusting the domain reputation. Check who created/shared the file if it's on your own tenant's cloud storage. If the shared content is a credential-harvesting page, treat as TP -- report to the cloud provider for takedown and block the specific share link/file ID, since blocking the entire legitimate domain isn't practical."
+  },
+  {
+    "cat": "MDI",
+    "sev": "High",
+    "q": "MDI raises a DCSync alert for account MSOL_5373eff83cdc replicating directory changes from a domain controller.",
+    "a": "This naming convention is the standard Azure AD Connect sync service account, which legitimately performs directory replication. Confirm the account matches your known AAD Connect server's service account, confirm the source host is that server, and confirm timing aligns with normal sync intervals. If confirmed, close as FP/expected sync behavior. Only escalate if the source host is NOT the AAD Connect server."
+  },
+  {
+    "cat": "MDI",
+    "sev": "High",
+    "q": "'Suspected Kerberoasting' alert -- a service account requested an unusually high number of TGS tickets in a short window.",
+    "a": "Kerberoasting targets service accounts for their often-weak passwords and elevated rights. Check whether the requesting account/process is a legitimate app doing bulk service-ticket work. Check source host -- expected app server vs unexpected workstation. Check encryption type requested (RC4 downgrade is a stronger TP signal). If source is unexpected or RC4 was requested from an atypical host, treat as TP -- rotate the service account password and investigate the source host."
+  },
+  {
+    "cat": "MDI",
+    "sev": "High",
+    "q": "MDI flags 'Suspected Golden Ticket usage' -- a Kerberos ticket presented with an unusually long lifetime and inconsistent encryption.",
+    "a": "Golden Ticket attacks are a severe post-compromise persistence technique requiring prior krbtgt hash theft, so this alert deserves immediate high-priority handling. Check the ticket lifetime against your domain's configured Kerberos policy (a ticket exceeding policy maximums is a strong indicator). Check which account and host presented the ticket, and whether that account's normal behavior matches. Given the severity of what a Golden Ticket implies (domain-wide compromise), escalate immediately regardless of ambiguity -- this is not a wait-and-verify scenario; assume TP and begin krbtgt password reset (twice, per Microsoft guidance) and full domain compromise assessment."
+  },
+  {
+    "cat": "MDI",
+    "sev": "Medium",
+    "q": "MDI detects 'Reconnaissance using account enumeration' -- a workstation queries AD for a large number of usernames in a short time.",
+    "a": "Check the initiating account and process -- some legitimate tools (backup software, directory sync tools, helpdesk utilities) enumerate accounts as part of normal function. Check DeviceProcessEvents for what tool made the LDAP queries. Check if the query pattern matches known reconnaissance tooling (BloodHound-style wide enumeration) vs a narrow, targeted lookup. If tied to unrecognized tooling from an unexpected host, treat as TP -- likely early-stage attacker reconnaissance -- and investigate the source host for further compromise indicators."
+  },
+  {
+    "cat": "MDI",
+    "sev": "High",
+    "q": "MDI raises a 'Pass-the-Hash' alert -- an NTLM authentication occurred using a hash without the corresponding interactive logon.",
+    "a": "Pass-the-hash indicates the attacker has an NTLM hash and is using it directly without knowing the plaintext password -- a strong lateral movement indicator. Check the source and destination hosts and whether this account normally accesses that destination. Check DeviceLogonEvents for the logon type (network logon without prior interactive logon on that host is expected for PtH). If the account doesn't normally interact with the destination host, treat as TP -- isolate both hosts and force a password reset/credential rotation for the affected account, since the hash itself remains usable until rotated."
+  },
+  {
+    "cat": "MDI",
+    "sev": "Medium",
+    "q": "MDI flags 'Suspicious additions to sensitive groups' -- a user account was added to Domain Admins outside of a documented change window.",
+    "a": "Group membership changes to privileged groups are high-impact regardless of who performed them, so verify against your change management records immediately. Check who performed the addition and whether there's an approved change ticket. Check the added account's recent activity for anomalies. If no change record exists and the addition is unexplained, treat as TP -- immediately remove from the privileged group pending investigation, and check the account that performed the addition for its own compromise indicators, since privilege escalation often follows an initial compromise."
+  },
+  {
+    "cat": "MDCA",
+    "sev": "Medium",
+    "q": "MDCA raises an OAuth app consent alert -- a user granted an unfamiliar third-party app broad mailbox and file read permissions.",
+    "a": "Illicit consent grant is a known post-phishing technique. Check the app's publisher/verification status in Entra ID, how many users granted it, and MDCA's app risk score. If unverified with broad permissions granted right after a phishing click, treat as TP -- revoke org-wide and check the mailbox for exfil (forwarding rules, Graph API mail reads). Known verified apps with legitimate business use close as FP but flag for governance review."
+  },
+  {
+    "cat": "MDCA",
+    "sev": "Medium",
+    "q": "MDCA fires a shadow IT alert for traffic to an unfamiliar AI/SaaS domain from multiple endpoints.",
+    "a": "Not malware -- unsanctioned SaaS usage. Check the app's Cloud Discovery risk score for data-handling practices. Identify affected users/business units. The real question is whether sensitive data is leaving via an unapproved tool -- check upload volume via proxy logs, not just connection count. Recommend sanctioning, blocking, or flagging to the business unit's security champion depending on data sensitivity; this is a policy/DLP closure, not an intrusion closure."
   },
   {
     "cat": "MDCA",
     "sev": "Info",
-    "q": "MDCA flags 'impossible travel' for a user logging in from Bangalore and then from a US IP forty minutes later.",
-    "a": "Impossible travel is one of the noisiest MDCA detections because of VPNs, corporate proxies, and cloud-based mail clients that route through different regions. Check if the 'travel' correlates with a known corporate VPN exit node or a cloud service IP range (Microsoft/Google datacenter ranges commonly trigger false positives). Check MFA status on both sign-ins -- if both were MFA-satisfied and one traces to a known VPN egress, close as FP. If MFA was bypassed or one sign-in used a legacy auth protocol, treat as TP and investigate for compromised credentials."
+    "q": "MDCA flags 'impossible travel' for a user logging in from Bangalore then from a US IP forty minutes later.",
+    "a": "One of the noisiest MDCA detections due to VPNs, proxies, and cloud mail clients routing through different regions. Check if the 'travel' correlates with a known VPN exit node or cloud service IP range. Check MFA status on both sign-ins -- if both were MFA-satisfied and one traces to known VPN egress, close as FP. If MFA was bypassed or legacy auth was used, treat as TP and investigate credential compromise."
+  },
+  {
+    "cat": "MDCA",
+    "sev": "Medium",
+    "q": "MDCA detects mass download activity from a user's OneDrive -- hundreds of files downloaded within minutes, flagged as potential data exfiltration.",
+    "a": "Check whether this correlates with a legitimate bulk activity (a planned migration, a backup job, or the user syncing a new device for the first time, which triggers a large initial download). Check the file types and sensitivity classifications involved. Check if the account shows any other compromise indicators around the same time (unusual sign-in, new device). If it aligns with a known legitimate bulk operation, close as FP; if unexplained and involves sensitive data, treat as TP exfiltration and suspend the account's session pending investigation."
+  },
+  {
+    "cat": "MDCA",
+    "sev": "Low",
+    "q": "MDCA flags a file-sharing policy violation -- a user shared a document externally using an 'anyone with the link' permission setting.",
+    "a": "This is a policy/DLP concern rather than a security incident by default, since the platform behaved as designed. Check the document's content classification/sensitivity label if your org uses them. Check the business justification if the user provides one (external collaboration is often legitimate). If the content is genuinely sensitive and shared insecurely, work with the user to correct the sharing scope and close as a policy-education closure; escalate only if the content matches confidential/restricted classification with no legitimate external need."
+  },
+  {
+    "cat": "KQL/Hunting",
+    "sev": "Info",
+    "q": "You need to hunt for a process's full lifecycle (logon, execution, network) using MDE Advanced Hunting tables. What's the key naming gotcha versus classic event logs?",
+    "a": "Advanced Hunting doesn't use classic Event Log field names. Use Timestamp, not TimeGenerated. Use ActionType, not EventID. Join DeviceLogonEvents -> DeviceProcessEvents -> DeviceNetworkEvents on DeviceId within a tight time window to build the chain: who logged on, what ran, where it connected. Mixing up legacy SIEM naming habits with KQL field names is the most common early mistake."
+  },
+  {
+    "cat": "KQL/Hunting",
+    "sev": "Info",
+    "q": "You want to hunt for a known-bad IP across multiple NIB tenants in XSIAM using XQL without writing 20 separate queries.",
+    "a": "Check whether the relevant datasets share a common field name for the IP -- they often don't, since naming conventions vary by data source (firewall raw logs vs O365 logs vs EDR). Build a dataset field reference first if you don't have one. Where fields align, a UNION across datasets works; where they don't, targeted per-dataset queries are more reliable than forcing a fragile universal one."
+  },
+  {
+    "cat": "KQL/Hunting",
+    "sev": "Info",
+    "q": "An XQL query against nib_pan_firewall_raw needs to calculate connection duration, but to_epoch() division and countif() both throw errors.",
+    "a": "These functions have known limitations on certain XSIAM datasets. For duration/time-bucket calculations, use format_timestamp() combined with if()+sum() logic instead of to_epoch() division. For conditional counting, replace countif() with a combination of if() and sum() aggregation, since countif() isn't universally supported across all dataset types. Always test aggregation functions against the specific dataset first rather than assuming syntax that worked elsewhere will transfer."
+  },
+  {
+    "cat": "KQL/Hunting",
+    "sev": "Info",
+    "q": "You're validating an Azure AD sign-in detection rule and boolean fields aren't matching your filter as expected (filtering for true returns nothing).",
+    "a": "Check the actual case of the boolean value in the raw data -- many XSIAM/Azure AD datasets return boolean fields as lowercase string literals \"true\"/\"false\" rather than native booleans. A filter written as field = True (capitalized or native boolean) will silently return zero matches. Always inspect a few raw sample rows first with a broad query before writing the filter condition, rather than assuming standard boolean typing."
+  },
+  {
+    "cat": "KQL/Hunting",
+    "sev": "Info",
+    "q": "A detection rule needs to exclude a specific field name, but the query keeps failing with a syntax error around that field.",
+    "a": "Check if the field name collides with a reserved keyword in the query language (e.g. 'target' is reserved in some XQL contexts). Reserved keyword collisions produce syntax errors that look unrelated to the actual field usage. Rename the reference using proper escaping/bracket notation if the language supports it, or alias the field early in the query to a non-reserved name and reference the alias throughout the rest of the query."
+  },
+  {
+    "cat": "KQL/Hunting",
+    "sev": "Info",
+    "q": "You're building an MFA fatigue detection rule but it's firing on background sign-in attempts that the user never actually saw or approved.",
+    "a": "Check whether your query includes NonInteractiveUserSignInLogs -- MFA fatigue detections should generally exclude non-interactive sign-ins, since those represent background token refreshes and service-to-service auth the user never consciously interacted with, not genuine repeated prompt attempts. Scope the rule to interactive sign-in logs only, and validate against a known real MFA fatigue incident (or a deliberately triggered test) to confirm the exclusion produces the expected reduction in noise."
   },
   {
     "cat": "General",
     "sev": "Medium",
-    "q": "A vulnerability scan alert flags a critical unpatched CVE on an internet-facing server, but the patch management team says it was already remediated last week.",
-    "a": "Don't just accept either side at face value -- verify directly. Check the actual patch/build version on the asset via your EDR or asset inventory rather than trusting either the scanner or the team's claim. Scanners can show stale results if they haven't rescanned since the patch, and patch teams can occasionally mis-report which assets were covered in a batch. If the version confirms the patch is applied, close as FP due to stale scan data and request a rescan. If the version shows it's still vulnerable, escalate as a TP gap in patch coverage regardless of what was reported."
+    "q": "An O365 mailbox forwarding rule alert fires for an executive's mailbox, forwarding to an external Gmail address.",
+    "a": "External auto-forwarding is a classic post-compromise persistence technique -- default to suspicion. Check Exchange audit logs for who created the rule and when, cross-reference with recent sign-in activity (impossible travel, new device, MFA anomalies). If the rule appeared right after a suspicious sign-in, treat as TP/BEC -- remove the rule, force password reset and session revocation. If user-created for a documented reason, close as FP but recommend removing external auto-forward per policy."
+  },
+  {
+    "cat": "General",
+    "sev": "Medium",
+    "q": "You're investigating a large outbound data transfer alert -- what determines DLP concern vs confirmed exfiltration?",
+    "a": "Volume alone doesn't decide it. Check the destination -- sanctioned corporate cloud service vs unfamiliar external endpoint/personal storage. Check file types against sensitive data classifications. Check whether this matches the user's normal role-based behavior baseline. Unapproved destination plus sensitive content -- escalate as exfiltration TP. Sanctioned destination plus a legitimate business task (scheduled backup, migration) -- close as FP/expected activity."
+  },
+  {
+    "cat": "General",
+    "sev": "High",
+    "q": "A firewall alert shows a burst of failed SSLVPN logins from a single external IP against multiple usernames within two minutes.",
+    "a": "Matches credential-stuffing/brute-force, not a mistyped password. Check whether any attempt succeeded first -- that's the highest priority check. Check source IP reputation (MDTI/AbuseIPDB). No successful logins -- block the IP and close as TP-blocked. A successful login -- treat as confirmed compromise, force password reset and session revocation immediately, escalate."
+  },
+  {
+    "cat": "General",
+    "sev": "Medium",
+    "q": "A GreyMatter DRP alert flags a recently-registered lookalike domain (typosquat) mimicking your company's brand.",
+    "a": "Check registration date via WHOIS/MDTI -- very recent registration near the alert date raises suspicion. Check if the domain resolves and what it hosts using a sandboxed browser (never visit directly from a corporate endpoint). Check for MX records indicating phishing/BEC setup rather than simple squatting. Active MX records or a phishing kit -- escalate for takedown and block at the email gateway. Dormant/parked with no MX -- document and monitor, close as informational."
+  },
+  {
+    "cat": "General",
+    "sev": "Medium",
+    "q": "A vulnerability scan flags a critical unpatched CVE on an internet-facing server, but the patch team says it was already remediated last week.",
+    "a": "Verify directly rather than trusting either side. Check the actual patch/build version on the asset via EDR or asset inventory. Scanners can show stale results if not rescanned post-patch; patch teams can occasionally misreport coverage. Version confirms patched -- close as FP due to stale scan, request a rescan. Version shows still vulnerable -- escalate as a genuine patch coverage gap regardless of what was reported."
+  },
+  {
+    "cat": "General",
+    "sev": "High",
+    "q": "A critical server shows a sudden spike in outbound DNS queries to random-looking subdomains of a single domain, hundreds per minute.",
+    "a": "This pattern strongly resembles DNS tunneling, a common technique for covert C2 or data exfiltration that bypasses traditional network filtering since DNS is rarely blocked outright. Check the query pattern for high entropy/randomness in subdomain labels (a hallmark of encoded tunneled data). Check the response sizes and TXT/NULL record usage, which are commonly abused for tunneling payloads. Check the destination domain's reputation and registration age. If the domain is suspicious and query patterns show encoding characteristics, treat as TP -- block the domain at the DNS/firewall layer and investigate the source host for the underlying malware or tool generating the traffic."
+  },
+  {
+    "cat": "General",
+    "sev": "Medium",
+    "q": "An endpoint's antivirus is reported as disabled by a helpdesk ticket, but there's no corresponding alert in your SIEM for AV tampering.",
+    "a": "A gap between a legitimate report and missing telemetry is itself worth investigating -- it could mean the tampering method evaded your detection rule, or it could mean the AV was disabled through a legitimate administrative action that wasn't logged as suspicious. Check the endpoint's local event logs directly for the disable action and initiating account. Check if this correlates with any recent software installation requiring AV exclusions. If disabled via unauthorized/unexplained means, treat as TP and escalate -- also flag the detection gap to improve future AV-tampering alerting coverage."
+  },
+  {
+    "cat": "General",
+    "sev": "Low",
+    "q": "A user reports receiving unexpected password reset emails for services they don't recall requesting, but no account compromise indicators are found.",
+    "a": "This pattern often indicates someone else attempting to gain access using the user's email address across various services (a form of reconnaissance or an early-stage credential-stuffing attempt against those other services, not necessarily your organization's systems). Confirm the user's own accounts on your systems show no unauthorized access attempts. Advise the user to verify their password wasn't reused across the affected external services and to enable MFA where available. Close as informational/no organizational impact, but document in case a pattern emerges across multiple users pointing to a broader credential list circulating."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Medium",
+    "q": "MDE flags a signed but rarely-seen driver being loaded on a server, categorized as 'Vulnerable driver' potentially usable for BYOVD (Bring Your Own Vulnerable Driver) attacks.",
+    "a": "BYOVD abuses legitimately signed drivers with known kernel-level vulnerabilities to bypass EDR/AV. Check the driver's hash and name against known vulnerable driver lists (LOLDrivers project). Check what process loaded it and whether that aligns with legitimate hardware/software on that host. If the driver has no legitimate reason to be on that server and matches a known-vulnerable entry, treat as TP -- isolate and investigate for kernel-level tampering or EDR blinding attempts."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Low",
+    "q": "A workstation shows a 'Suspicious WMI activity' alert -- WMI used to query system information remotely from another internal host.",
+    "a": "WMI is a legitimate and heavily-used Windows management protocol, so this alert has a high baseline FP rate. Check the source host -- is it a known management/monitoring server (SCCM, Intune, RMM tooling)? Check what specific WMI classes were queried; broad reconnaissance-style queries (process lists, user accounts, installed software) from an unexpected host raise more concern than targeted management queries from known infrastructure. If source is confirmed management tooling, close as FP; unexpected source performing broad queries warrants escalation as possible lateral reconnaissance."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Medium",
+    "q": "MDE detects a script attempting to disable Windows Defender real-time protection via registry modification.",
+    "a": "Disabling security tooling is a strong pre-attack indicator, since malware commonly tries to blind defenses before deploying its main payload. Check the initiating process and account -- was this a legitimate admin action via Group Policy or an unexpected script? Check the timing relative to any other suspicious activity on the host (this often precedes a more damaging payload by minutes). Unless clearly tied to documented administrative change management, treat as TP and investigate the host closely for what activity follows or precedes this attempt."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Medium",
+    "q": "A device shows repeated failed attempts to access the SAM registry hive, flagged as 'Suspicious registry access.'",
+    "a": "The SAM hive stores local password hashes, so repeated access attempts suggest credential harvesting attempts (e.g. via reg save or similar techniques). Check the initiating process and whether it's a known backup/imaging tool that legitimately accesses this hive, or an unrecognized process. Check for follow-on file creation (a saved hive dump) via DeviceFileEvents. If tied to unrecognized tooling with an actual dump file created, treat as TP -- isolate and assume local credential compromise for that host."
+  },
+  {
+    "cat": "MDE",
+    "sev": "High",
+    "q": "An endpoint shows a suspicious child process spawned from a Microsoft Office application (winword.exe spawning powershell.exe) immediately after a document was opened.",
+    "a": "Office spawning a shell is a classic macro-based malware delivery pattern, not normal document behavior. Pull the PowerShell command line for the actual payload, decode any encoding. Check DeviceNetworkEvents for any download/callback activity from that PowerShell session. Check the document's origin (email attachment, download) and whether it came from an untrusted external source. If the PowerShell attempts to download additional payloads or establish persistence, treat as TP and isolate immediately -- this pattern has a very low legitimate-use rate."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Info",
+    "q": "A software deployment tool triggers dozens of 'file creation in system directories' alerts across many endpoints simultaneously during a scheduled patch window.",
+    "a": "Mass simultaneous alerts across many endpoints at once is a strong indicator of a legitimate centrally-managed operation rather than an attack, since real intrusions rarely hit dozens of hosts in perfect synchrony via the same mechanism. Confirm the timing against your known patch/deployment schedule and confirm the tool is your sanctioned deployment platform (SCCM, Intune, etc.). If confirmed, close the batch as FP with a single consolidated note rather than investigating each alert individually -- but flag to leadership if this deployment activity should be added to a tuning/suppression rule to reduce future noise."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Medium",
+    "q": "MDE alerts on 'Suspicious ISO/IMG file mount' -- a user mounted a disk image file that then executed a script.",
+    "a": "ISO/IMG mounting is a known technique to smuggle malicious payloads past mail/web filters that don't fully scan inside container/image files (Mark of the Web evasion). Check the ISO's origin -- email attachment, download link, or removable media. Check what executed after mounting via DeviceProcessEvents. If the ISO arrived via email/download from an untrusted source and executed a script with network activity or persistence attempts, treat as TP -- this specific technique is commonly used in initial-access phishing campaigns specifically because it evades certain automated scanning."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Medium",
+    "q": "A server shows unusual outbound SMB traffic to an external IP address, which is highly atypical since SMB is normally blocked outbound at the firewall.",
+    "a": "If this traffic actually reached an external destination despite expected outbound SMB blocking, that's worth investigating both as a potential data exfiltration/NTLM relay attempt and as a firewall rule gap. Check firewall logs to confirm whether the traffic was actually permitted through or just attempted and blocked. If blocked, this is a lower-priority informational finding but should trigger a firewall rule review. If it succeeded, treat as TP -- possible NTLM credential relay or data exfiltration via SMB -- and escalate both the security incident and the network control gap."
+  },
+  {
+    "cat": "MDO",
+    "sev": "Low",
+    "q": "MDO's Zero-hour Auto Purge (ZAP) retroactively removes an email from mailboxes after initial delivery was marked clean, based on updated threat intelligence.",
+    "a": "This is ZAP functioning as designed -- reputation and detonation results can update after delivery as more intelligence becomes available globally, and MDO retroactively acts on it. Confirm via Threat Explorer which mailboxes were affected and whether any user interacted with the email before purge (clicked link, opened attachment, replied). If no interaction occurred before purge, close as TP-contained with no further action needed. If interaction occurred first, treat the interacting endpoint as needing MDE-side investigation despite the mailbox-level purge."
+  },
+  {
+    "cat": "MDO",
+    "sev": "Medium",
+    "q": "An email passes all authentication checks (SPF/DKIM/DMARC) and detonation finds no malicious URL or attachment, but the content requests an unusual gift-card purchase from an employee, impersonating their manager's writing style.",
+    "a": "This is a pure social-engineering BEC attempt with no technical IOC to detonate, which is exactly why it evades most automated engines -- there's nothing 'malicious' in a scanning sense, just a well-crafted lie. Check the actual sending domain closely for subtle lookalike characteristics (character substitution, extra characters) versus the real manager's domain. Check if the reply-to address differs from the display sender. Treat as TP (BEC) based on content and context even with zero technical indicators -- report and block the sending infrastructure, and alert the impersonated manager and employee directly since these attacks specifically target human trust rather than technical gaps."
+  },
+  {
+    "cat": "MDO",
+    "sev": "Medium",
+    "q": "Threat Explorer shows a phishing campcampaign was blocked at delivery for 95% of targeted users, but 5% still show 'delivered' status due to a mail flow rule exception.",
+    "a": "Investigate why the exception exists before treating those 5% as a simple gap -- often a legitimate mail flow rule (e.g. an exception for a specific department that receives external attachments regularly) unintentionally creates a phishing blind spot. Check which specific rule caused the bypass and whether it's overly broad. For the affected users, check Threat Explorer for click/read status on the delivered copies. If any interacted with the email, treat those endpoints as needing MDE-side follow-up; separately, recommend narrowing the mail flow rule's scope to reduce future exposure."
+  },
+  {
+    "cat": "MDO",
+    "sev": "High",
+    "q": "A phishing email uses an OAuth-based 'consent phishing' page that mimics a Microsoft login but is actually requesting the user grant permissions to a malicious app, rather than harvesting a password directly.",
+    "a": "Consent phishing is designed specifically to bypass MFA, since the user isn't giving up a password at all -- they're granting an app permissions token, which MFA doesn't protect against. Check Entra ID for any new app consent grants around the time of the click. If a grant occurred, this is equivalent to a full account compromise in terms of data access, even without a stolen password. Treat as TP -- revoke the app's consent immediately, check for mailbox rule changes or data access via the granted app's permissions scope, and don't assume MFA protected the user in this scenario."
+  },
+  {
+    "cat": "MDO",
+    "sev": "Medium",
+    "q": "An internal user's account sends a burst of outbound phishing-style emails to external contacts, but the user says they never sent them.",
+    "a": "This pattern strongly suggests either account compromise or a compromised connected app sending on the user's behalf. Check Entra ID sign-in logs around the send time for anomalous sign-ins. Check Exchange for any recently added mail-sending apps/OAuth grants. Check if MFA was satisfied on the relevant session. If sign-in anomalies or unauthorized app grants are found, treat as TP -- force password reset, revoke sessions and suspicious app consents, and notify recipients of the outbound phishing attempt since they may now be targeted themselves."
+  },
+  {
+    "cat": "MDO",
+    "sev": "Info",
+    "q": "A legitimate marketing email from an approved bulk-sending platform gets flagged as spam/phishing by MDO due to bulk-sending characteristics.",
+    "a": "Bulk marketing platforms often trigger spam heuristics because their sending patterns (high volume, similar templates, tracking pixels, multiple links) overlap with actual phishing campaign characteristics. Check the sending domain's authentication (SPF/DKIM/DMARC) and reputation history. Check if this platform is an approved/known vendor for your organization's marketing communications. If authentication passes and the vendor is legitimate and expected, close as FP and consider an allow-list entry for that specific sending domain to reduce recurring noise."
+  },
+  {
+    "cat": "MDI",
+    "sev": "High",
+    "q": "MDI raises a 'Pass-the-Ticket' alert -- a Kerberos ticket is used from a different host than the one that originally requested it.",
+    "a": "Pass-the-Ticket involves stealing and reusing a valid Kerberos ticket on a different machine, a strong lateral movement indicator. Check whether the two hosts involved have any legitimate reason for shared ticket usage (unlikely in standard environments, but some clustering/service configurations can appear unusual). Check the account's normal behavior pattern -- does it typically operate from both hosts? If the ticket usage jumped to an unexpected host with no legitimate explanation, treat as TP -- isolate both hosts and rotate credentials for the affected account."
+  },
+  {
+    "cat": "MDI",
+    "sev": "Medium",
+    "q": "MDI flags 'Suspicious VPN connection' correlating with an AD sign-in from a Tor exit node or known anonymization service.",
+    "a": "Legitimate business use of Tor/anonymization services for corporate authentication is essentially nonexistent, making this a high-confidence suspicious indicator by default. Check MFA status on the sign-in -- even if MFA passed, check whether it was a push-approval that could have been fatigued/socially engineered versus a phishing-resistant method. Check what the account did immediately after authenticating. Given the near-zero legitimate use case, treat as TP by default -- suspend the session and force credential rotation, and investigate what resources were accessed during that session."
+  },
+  {
+    "cat": "MDI",
+    "sev": "Medium",
+    "q": "MDI detects 'Suspected AS-REP Roasting' -- an account with Kerberos pre-authentication disabled had its ticket requested and captured.",
+    "a": "AS-REP Roasting targets accounts that don't require Kerberos pre-authentication, allowing offline password cracking of the captured ticket. Check whether the flagged account is one that legitimately has pre-auth disabled for a documented compatibility reason (some legacy applications require this), and whether that's an accepted, known-risk configuration. If it's an unexpected/unauthorized configuration change, treat as a security gap requiring remediation regardless of whether active exploitation is confirmed -- pre-auth should be enabled unless there's a documented business reason, and the account's password should be rotated to a long, complex value to reduce offline-cracking risk."
+  },
+  {
+    "cat": "MDI",
+    "sev": "Low",
+    "q": "MDI shows a 'Domain Controller reconnaissance' alert from a security scanning tool during a scheduled vulnerability assessment.",
+    "a": "Legitimate vulnerability scanners intentionally perform many of the same reconnaissance actions attackers do, since they're testing for the same weaknesses. Check whether this timing aligns with a scheduled, approved vulnerability scan and whether the source IP matches your known scanning infrastructure. If confirmed, close as FP tied to authorized scanning activity -- consider adding the scanner's source IP to a suppression/tuning rule to reduce recurring noise during future scan windows, while still ensuring the scanning IP itself is tightly controlled and monitored for misuse."
+  },
+  {
+    "cat": "MDI",
+    "sev": "High",
+    "q": "MDI raises an alert for 'Exploitation of a domain controller' correlating with a known CVE for a recent Active Directory vulnerability.",
+    "a": "An alert tied to a known CVE against a domain controller is high-severity by definition given the blast radius of DC compromise. Check whether the DC has the relevant patch applied -- if unpatched and the exploitation attempt shows signs of success (unexpected process execution, new accounts created, group membership changes), this is a critical incident requiring immediate full-scale response, not routine triage. If the DC is patched and the attempt appears to have failed, still treat as TP (attempted exploitation) and escalate for immediate patching verification across all DCs plus investigation of the source of the attempt."
+  },
+  {
+    "cat": "MDCA",
+    "sev": "Medium",
+    "q": "MDCA detects a new, unsanctioned cloud storage app receiving uploads from a departing employee's account during their final week.",
+    "a": "Timing context matters heavily here -- uploads to personal/unsanctioned cloud storage right before someone's departure is a classic data theft pattern, distinct from routine unsanctioned SaaS usage. Check the file types and volumes involved, and whether they include proprietary/sensitive material (client lists, source code, financial data). Check with HR/manager whether this departure is routine or contentious. If sensitive data was moved to personal storage without authorization, treat as TP -- this typically requires immediate escalation to HR/Legal in addition to standard SOC containment, since it may need to inform exit procedures or legal action."
+  },
+  {
+    "cat": "MDCA",
+    "sev": "Low",
+    "q": "MDCA flags an app for having 'over-privileged permissions' even though it's a well-known, widely-verified productivity app used organization-wide.",
+    "a": "Even legitimate, verified apps can request more permissions than they strictly need for their core function, which is a real risk worth noting but doesn't mean the app itself is malicious. Check what specific permissions are flagged as excessive and whether the app's actual usage pattern in your org justifies them. If it's a widely-trusted app already approved by IT/security governance, this is typically a lower-priority informational finding -- document for the app governance review process rather than treating as an active security incident, but don't dismiss it entirely since permission scope creep is worth periodic re-evaluation."
+  },
+  {
+    "cat": "MDCA",
+    "sev": "Medium",
+    "q": "A user's cloud account shows access from an unfamiliar user agent string (an uncommon or outdated browser/OS combination) that doesn't match their usual device fingerprint.",
+    "a": "Unusual user agents can indicate either a legitimate new device/browser the user just started using, or an attacker's automation/scripting tool mimicking a browser. Check if this correlates with the user recently reporting a new device or software installation. Check the user agent string itself for known automation tool signatures (headless browsers, scripting libraries) versus a genuinely unusual but real browser. If it matches known automation/scripting patterns and the account then performed bulk actions (mass downloads, permission changes), treat as TP; if it's just an unusual-but-real device with normal subsequent behavior, close as FP."
+  },
+  {
+    "cat": "MDCA",
+    "sev": "Medium",
+    "q": "MDCA's anomaly detection flags a service account performing interactive-style sign-ins from multiple different IP locations within an hour.",
+    "a": "Service accounts are expected to have narrow, predictable behavior patterns (specific source hosts, non-interactive sign-in types), so any interactive-style, geographically-distributed activity is a strong deviation. Check the account's baseline behavior profile and whether any legitimate change (a new integration, a migrated service) could explain the shift. Check if this account has appropriately restricted sign-in policies (conditional access) that should have blocked this pattern. If unexplained, treat as TP -- service account credentials are high-value targets precisely because they're less actively monitored by end users, so assume compromise and rotate credentials immediately."
+  },
+  {
+    "cat": "KQL/Hunting",
+    "sev": "Info",
+    "q": "You need to identify all devices that both received a specific phishing email (per MDO) and subsequently showed suspicious process execution (per MDE) within a defined window, using KQL across products.",
+    "a": "This requires a cross-product hunting query joining EmailEvents (or EmailAttachmentInfo/EmailUrlInfo) from MDO with DeviceProcessEvents from MDE, typically joined on RecipientEmailAddress/AccountUpn mapped to DeviceId via DeviceInfo, within a time window bounded by the email's delivery timestamp. The key challenge is that email and device tables don't share a direct device identifier -- you often need an intermediate join through sign-in or device ownership mapping tables. Build and test this join logic against a known historical case first to confirm the mapping produces accurate device-to-recipient correlation before trusting it for a live hunt."
+  },
+  {
+    "cat": "KQL/Hunting",
+    "sev": "Info",
+    "q": "Your XQL detection rule for suspicious PowerShell needs to exclude known-legitimate admin scripts, but a simple NOT IN filter against a hardcoded list is becoming unmanageable as the list grows.",
+    "a": "Hardcoded exclusion lists inside a single query become a maintenance burden and a source of drift as legitimate scripts change. Consider maintaining exclusions as a separate reference dataset/lookup table that the detection rule joins against, rather than embedding them directly in the query logic -- this separates the exclusion list's maintenance from the detection logic itself and makes updates safer (no risk of breaking query syntax when adding an exclusion). Document who owns updating that reference list as part of your rule maintenance process."
+  },
+  {
+    "cat": "KQL/Hunting",
+    "sev": "Info",
+    "q": "A hunting query for lateral movement needs to detect an account authenticating to an unusually high number of distinct hosts compared to its normal baseline, but there's no built-in 'baseline' field to compare against.",
+    "a": "You need to build the baseline yourself using historical data -- typically a rolling window (e.g. the account's distinct host count over the prior 30 days) computed via a summarize/bin query, then compared against the current day's count using a self-join or a materialized lookup table refreshed periodically. Flag accounts whose current-day distinct host count significantly exceeds their historical baseline (e.g. more than 2-3 standard deviations, or a simple multiplier threshold like 3x their typical average) rather than using a single fixed threshold across all accounts, since normal behavior varies significantly between service accounts, IT admins, and regular users."
+  },
+  {
+    "cat": "KQL/Hunting",
+    "sev": "Info",
+    "q": "You're hunting for beaconing behavior (regular-interval C2 callbacks) in DeviceNetworkEvents, but manually eyeballing timestamps across thousands of connections isn't scalable.",
+    "a": "Calculate the time delta between consecutive connection events for the same source-destination pair using a windowing/lag-style function, then look for low variance in those deltas (consistent intervals are the signature of automated beaconing versus the irregular timing of human-driven browsing). Combine this with a check on payload size consistency -- beaconing traffic often shows similar small payload sizes across each check-in. Set a threshold for both interval consistency and payload similarity to surface likely beaconing candidates for manual review, rather than trying to visually scan raw connection logs."
+  },
+  {
+    "cat": "KQL/Hunting",
+    "sev": "Info",
+    "q": "A rule validating sign-in logs needs to detect legacy authentication protocol usage (which bypasses modern conditional access/MFA), but the protocol field contains many different values you're not fully familiar with.",
+    "a": "Rather than guessing which values count as 'legacy,' pull a distinct list of all values appearing in the authentication protocol field over a recent period first, then cross-reference against Microsoft's documented list of legacy protocols (POP, IMAP, SMTP AUTH, older ActiveSync versions, and similar). Build your detection rule's inclusion list from that verified reference rather than assuming you know every legacy protocol name that might appear in your specific tenant's data, since naming can vary slightly by log source and product version."
+  },
+  {
+    "cat": "KQL/Hunting",
+    "sev": "Info",
+    "q": "You need to build a detection for a specific file hash appearing anywhere across your MDE fleet, but the hash could appear in several different fields (SHA256, SHA1, MD5) depending on which table logged it.",
+    "a": "Different DeviceFileEvents/DeviceProcessEvents fields capture different hash types depending on what generated the log entry, so a single-field search will miss matches logged under a different hash algorithm. Build your query to check the IOC hash against all relevant hash fields (SHA256, SHA1, MD5) using an OR condition across fields rather than assuming one field will always contain it, and confirm which hash type your threat intelligence source actually provided before starting the hunt, since converting between hash types isn't possible after the fact."
+  },
+  {
+    "cat": "General",
+    "sev": "Medium",
+    "q": "A critical server shows a sudden spike in outbound DNS queries to random-looking subdomains of a single domain, hundreds per minute.",
+    "a": "This pattern strongly resembles DNS tunneling, used for covert C2 or exfiltration since DNS is rarely blocked outright. Check query pattern entropy/randomness in subdomain labels. Check response sizes and TXT/NULL record usage, commonly abused for tunneling payloads. Check the destination domain's reputation and registration age. If suspicious and encoding characteristics are present, treat as TP -- block at the DNS/firewall layer and investigate the source host for the underlying tool generating the traffic."
+  },
+  {
+    "cat": "General",
+    "sev": "Medium",
+    "q": "Multiple users across different departments report receiving the same suspicious email around the same time, but it wasn't caught by any automated filter.",
+    "a": "A coordinated campaign hitting multiple users simultaneously that bypassed automated detection deserves priority handling regardless of what any single engine's verdict says, since the volume/pattern itself is a strong signal. Check if all reports share the same sender, subject, or embedded link/attachment. Manually submit the email for detonation/analysis rather than trusting the 'no threat found' automated result, since a coordinated bypass suggests the campaign was specifically crafted to evade current signatures. If confirmed malicious upon manual review, treat as TP and push an org-wide block/purge even though initial automated scanning missed it."
+  },
+  {
+    "cat": "General",
+    "sev": "Low",
+    "q": "An asset inventory review reveals a device connected to the corporate network that isn't registered in your CMDB/asset management system.",
+    "a": "Unregistered/rogue devices are a foundational security gap regardless of whether they show any malicious activity, since they represent a monitoring blind spot. Check the device's MAC address vendor and connection point (which switch port/network segment) to identify what it physically is. Check if it's a legitimate but unregistered device (a contractor's laptop, a new IoT device not yet onboarded) versus something unexplained. Regardless of intent, treat unregistered devices as a policy violation requiring immediate registration or network removal, and escalate to asset management to close the inventory gap."
+  },
+  {
+    "cat": "General",
+    "sev": "Medium",
+    "q": "A cloud storage bucket (S3-style) is discovered to be publicly accessible when it should have been restricted to internal use only.",
+    "a": "Public cloud storage misconfigurations are a common and high-impact exposure type, so the priority is immediate remediation speed, similar to a live incident even without confirmed evidence of external access yet. Check the bucket's access logs (if enabled) for any external IP addresses that have already accessed the contents -- this determines whether this is a near-miss or a confirmed data exposure. Immediately restrict the bucket's permissions regardless of what the logs show. If external access is confirmed in the logs, treat as a TP data exposure incident requiring broader incident response (identifying what data was exposed and to whom) rather than just a configuration fix."
+  },
+  {
+    "cat": "General",
+    "sev": "Medium",
+    "q": "A third-party vendor with VPN access to your network reports they were compromised, but you see no alerts on your side involving their access.",
+    "a": "Absence of alerts doesn't mean absence of risk -- it may mean the compromise hasn't reached your environment yet, or that it did and evaded your detection coverage. Immediately review all authentication and activity logs tied to that vendor's VPN access account for the relevant time period, regardless of whether any automated alert fired. Check what level of access that VPN connection provides and what resources are reachable from it. Proactively suspend the vendor's access pending their own incident resolution, treating this as precautionary containment rather than waiting for your own systems to show a positive detection."
+  },
+  {
+    "cat": "General",
+    "sev": "High",
+    "q": "You discover an unauthorized change to a critical firewall rule that opened a previously-blocked port to the internet, and there's no matching change ticket.",
+    "a": "An unauthorized change to a security control itself is a serious finding regardless of whether the opened port has been actively exploited yet, since it represents a deliberate weakening of defenses. Check the firewall's change logs for who made the modification and from what account/source. Check whether that port has seen any inbound connection attempts since the change was made. Immediately revert the rule to its prior secure state. If the change can't be attributed to an authorized administrator performing a documented task, treat this as a potential insider threat or compromised admin account scenario and escalate accordingly -- this is not a routine misconfiguration closure."
   }
 ]
