@@ -1,0 +1,14 @@
+[
+  {
+    "cat": "MDCA",
+    "sev": "Medium",
+    "q": "MDCA raises an OAuth app consent alert: a user granted an unfamiliar third-party app 'read all mailbox items' and 'read files' permissions.",
+    "a": "Illicit consent grant is a well-known post-phishing technique. Check the app's publisher and verification status in Entra ID, check how many other users have granted it, and check MDCA's app risk score. If the app is unverified, has broad permissions, and was granted right after the user clicked a link in a phishing email, treat as TP -- revoke the app's consent org-wide and check the mailbox for exfil (forwarding rules, mail read via Graph API). If it's a known verified productivity app with a legitimate business reason, close as FP but note it for the app governance review."
+  },
+  {
+    "cat": "General",
+    "sev": "High",
+    "q": "A new firewall rule alert shows a burst of failed SSLVPN logins from a single external IP against multiple usernames within 2 minutes.",
+    "a": "Pattern matches a credential-stuffing / brute-force attempt, not a single mistyped password. Check whether any of the attempts succeeded (a single success buried in a burst of failures is the highest priority to check first). Check if the source IP has prior reputation hits (MDTI/AbuseIPDB). If no successful logins, block the source IP at the firewall and close as TP-blocked. If a login succeeded, treat as a confirmed compromise -- force password reset and session revocation for that account immediately, and escalate."
+  }
+]

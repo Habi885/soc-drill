@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SOC Drill</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --bg:#0B1220;
+    --surface:#121B2E;
+    --surface-2:#182437;
+    --border:#22304A;
+    --text:#E6EDF7;
+    --muted:#8896AB;
+    --amber:#F5A623;
+    --cyan:#4CC9F0;
+    --red:#E5484D;
+    --green:#3DDC97;
+    --display: 'Space Grotesk', sans-serif;
+    --mono: 'IBM Plex Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--mono);}
+  #app{max-width:920px;margin:0 auto;padding:28px 18px 60px;}
+
+  .topbar{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:22px;border-bottom:1px solid var(--border);padding-bottom:16px;}
+  .brand{display:flex;flex-direction:column;gap:2px;}
+  .brand .eyebrow{font-size:11px;letter-spacing:.16em;color:var(--amber);text-transform:uppercase;font-weight:600;}
+  .brand h1{font-family:var(--display);font-size:26px;margin:0;font-weight:700;letter-spacing:-.01em;}
+  .brand .sub{color:var(--muted);font-size:12.5px;}
+
+  .tabs{display:flex;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;}
+  .tab-btn{appearance:none;border:none;background:transparent;color:var(--muted);font-family:var(--mono);font-size:12.5px;font-weight:600;letter-spacing:.02em;padding:8px 14px;border-radius:7px;cursor:pointer;transition:all .15s;}
+  .tab-btn.active{background:var(--bg);color:var(--text);box-shadow:0 0 0 1px var(--border);}
+  .tab-btn:hover:not(.active){color:var(--text);}
+
+  .stat-row{display:flex;gap:18px;margin-bottom:18px;flex-wrap:wrap;}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 16px;min-width:88px;}
+  .stat .n{font-family:var(--display);font-size:20px;font-weight:700;}
+  .stat .l{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;margin-top:2px;}
+  .stat.streak .n{color:var(--amber);}
+  .stat.hit .n{color:var(--green);}
+  .stat.miss .n{color:var(--red);}
+
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;}
+  .chip{border:1px solid var(--border);background:var(--surface);color:var(--muted);font-family:var(--mono);font-size:11.5px;font-weight:500;padding:6px 12px;border-radius:999px;cursor:pointer;transition:all .15s;}
+  .chip.active{border-color:var(--cyan);color:var(--cyan);background:rgba(76,201,240,.08);}
+  .chip:hover{color:var(--text);}
+
+  .deck-wrap{display:flex;flex-direction:column;align-items:center;gap:18px;}
+  .deck-count{color:var(--muted);font-size:11.5px;letter-spacing:.05em;}
+
+  .card{width:100%;max-width:560px;min-height:300px;perspective:1400px;}
+  .card-inner{position:relative;width:100%;height:100%;min-height:300px;transform-style:preserve-3d;transition:transform .5s cubic-bezier(.4,.2,.2,1);cursor:pointer;}
+  .card-inner.flipped{transform:rotateY(180deg);}
+  .face{position:absolute;inset:0;backface-visibility:hidden;border-radius:14px;border:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;overflow:hidden;}
+  .face-back{transform:rotateY(180deg);}
+
+  .face-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);}
+  .sev{font-size:10px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;padding:3px 9px;border-radius:5px;}
+  .sev-High{background:rgba(229,72,77,.14);color:var(--red);}
+  .sev-Medium{background:rgba(245,166,35,.14);color:var(--amber);}
+  .sev-Info{background:rgba(76,201,240,.14);color:var(--cyan);}
+  .status{font-size:10.5px;color:var(--muted);letter-spacing:.05em;}
+  .status.investigating{color:var(--amber);}
+  .status.closed{color:var(--green);}
+
+  .cat-tag{font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;padding:12px 16px 0;}
+  .face-body{padding:8px 20px 20px;flex:1;display:flex;align-items:center;}
+  .prompt{font-family:var(--display);font-size:18px;line-height:1.5;font-weight:600;}
+  .answer{font-size:14px;line-height:1.65;color:#D6E0EE;white-space:pre-line;}
+
+  .hint{position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:10.5px;color:var(--muted);letter-spacing:.06em;}
+
+  .verdict-row{display:flex;gap:12px;width:100%;max-width:560px;}
+  .vbtn{flex:1;font-family:var(--mono);font-weight:600;font-size:13px;letter-spacing:.03em;padding:13px;border-radius:10px;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text);transition:all .15s;}
+  .vbtn:hover{transform:translateY(-1px);}
+  .vbtn.miss:hover{border-color:var(--red);color:var(--red);}
+  .vbtn.hit:hover{border-color:var(--green);color:var(--green);}
+  .vbtn:disabled{opacity:.35;cursor:default;transform:none;}
+
+  .deck-actions{display:flex;gap:10px;}
+  .ghost-btn{font-family:var(--mono);font-size:11.5px;color:var(--muted);background:transparent;border:1px solid var(--border);padding:7px 13px;border-radius:8px;cursor:pointer;}
+  .ghost-btn:hover{color:var(--text);border-color:var(--cyan);}
+
+  .empty{text-align:center;color:var(--muted);padding:60px 20px;font-size:13px;}
+
+  /* Feed */
+  .feed-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
+  .feed-head p{color:var(--muted);font-size:12px;margin:0;max-width:420px;line-height:1.5;}
+  .pull-btn{font-family:var(--mono);font-weight:600;font-size:12.5px;background:var(--amber);color:#1A1204;border:none;padding:11px 18px;border-radius:9px;cursor:pointer;letter-spacing:.02em;}
+  .pull-btn:hover{filter:brightness(1.08);}
+  .pull-btn:disabled{opacity:.5;cursor:default;}
+
+  .feed-item{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px;}
+  .feed-item .line{width:3px;}
+  .feed-title{font-family:var(--display);font-size:15px;font-weight:600;margin:0 0 6px;}
+  .feed-src{font-size:10.5px;color:var(--amber);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;}
+  .feed-sum{font-size:13px;color:#D6E0EE;line-height:1.6;}
+  .feed-time{font-size:10px;color:var(--muted);margin-top:20px;text-align:right;}
+
+  .loading-line{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12.5px;padding:20px 0;}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--amber);animation:pulse 1s infinite ease-in-out;}
+  .dot:nth-child(2){animation-delay:.15s;} .dot:nth-child(3){animation-delay:.3s;}
+  @keyframes pulse{0%,100%{opacity:.3;}50%{opacity:1;}}
+
+  .err{color:var(--red);font-size:12.5px;background:rgba(229,72,77,.08);border:1px solid rgba(229,72,77,.3);padding:12px 14px;border-radius:9px;}
+
+  @media (max-width:520px){
+    .brand h1{font-size:21px;}
+    .verdict-row{flex-direction:column;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+// --- External deck sync ---
+// Point this at a raw JSON file you control (e.g. a GitHub Gist "raw" URL,
+// GitHub Pages, or any static host with CORS enabled) containing an array
+// of {cat, sev, q, a} objects. Every teammate's browser will pull whatever
+// is at this URL on page load and merge it into the deck below, so you can
+// push new cards to everyone just by updating that one file.
+// Leave blank to skip external sync and use only the bundled deck.
+const CARDS_SOURCE_URL = "";
+
+let CARDS = [
+  {cat:"MDE", sev:"High", q:"MDE fires a Trojan:Win32/Wacatac.B!ml alert on a finance user's laptop, flagged file sits in Downloads with a .scr extension disguised as an invoice PDF.", a:"Check the file hash against threat intel first (VT/MDTI). Wacatac.ml detections are ML-based and have a known FP rate on packed/obfuscated legit installers, so verify: was the file actually executed (DeviceProcessEvents), did it spawn child processes or touch LSASS, and did the user actually download it from an external source (DeviceNetworkEvents). If quarantined pre-execution and hash is known-bad on VT with no execution evidence -> TP-blocked, close as remediated. If execution occurred with no follow-on process/network activity and hash is unknown -> escalate for sandbox detonation before closing."},
+  {cat:"MDE", sev:"Medium", q:"An ASR rule 'Block executable content from email client and webmail' triggers in Audit mode on a dev machine running a legitimate PowerShell deployment script.", a:"Audit mode alerts never blocked anything -- confirm this first so you don't over-escalate. Pull DeviceEvents for the ActionType and check the FolderPath/InitiatingProcess. If the source is a known IT deployment tool (SCCM, Intune script runner) and the target is a signed/expected binary, this is an FP -- consider recommending an ASR exclusion for that specific tool if it recurs. If the parent process is outlook.exe or a browser rendering an attachment, treat it as suspicious and check DeviceNetworkEvents for the file's origin."},
+  {cat:"MDE", sev:"Medium", q:"AMSI reports a 'Suspicious PowerShell download' behavior alert with base64-encoded content and an AMSI bypass pattern.", a:"Don't take AMSI's summary at face value -- pull the actual decoded command line from the alert evidence. Check InitiatingProcessCommandLine in DeviceProcessEvents and decode the base64 yourself to see the real payload. AMSI bypass patterns (e.g. reflection-based AMSI patching) are a strong TP indicator regardless of what the script claims to do. Cross-check DeviceNetworkEvents for outbound C2-style connections right after execution. If decoded content is a legitimate admin one-liner (e.g. from a known RMM tool) with no bypass logic, it's likely FP; if bypass logic is present, treat as TP and isolate the device."},
+  {cat:"MDE", sev:"Info", q:"A 'PossibleReverseShell' alert fires for a Linux server, initiating process is ansible-connection or a Foreman agent.", a:"This is a classic FP pattern in NIB environments -- Ansible and Foreman legitimately open reverse-style ephemeral connections back to the control node during orchestration runs. Confirm the source IP is your known Ansible/Foreman control server (check against your asset inventory), confirm the timing lines up with a scheduled config-management run, and confirm no unexpected commands were executed outside the playbook's scope. If all three line up, close as FP -- reverse-shell heuristic matching legitimate orchestration tooling. If the source IP is unrecognized, escalate immediately."},
+  {cat:"MDE", sev:"Medium", q:"macOS endpoint shows a PUA (Potentially Unwanted Application) detection for a torrent client or cracked software installer.", a:"PUA alerts are inherently lower-severity by design -- MDE flags policy-violating software, not necessarily malicious code. Check whether MDE auto-remediated (quarantined) it already. If quarantined, the risk is contained; document what the app was, how it got there (DeviceFileEvents for download source), and close as remediated. If not auto-remediated, verify no follow-on network beaconing to unusual domains, and if it's genuinely just unwanted software with no malicious behavior, close as FP/PUA with a note to enforce device compliance policy rather than treating it as an intrusion."},
+  {cat:"MDCA", sev:"Medium", q:"MDCA fires a shadow IT / new cloud app alert for traffic to 'ollama.com' or an unfamiliar AI tool domain from multiple endpoints.", a:"This isn't malware -- it's unsanctioned SaaS usage. Check MDCA's Cloud Discovery risk score for the app (data handling, compliance certs). Identify how many users and which business unit. The investigative question isn't 'is this an attacker' but 'is sensitive data leaving via an unapproved AI/LLM tool.' Check DeviceNetworkEvents / proxy logs for upload volume, not just connection count. Recommend sanctioning, blocking, or flagging to the BU's security champion depending on data sensitivity -- this is a policy/DLP closure, not an intrusion closure."},
+  {cat:"MDO", sev:"High", q:"MDO flags a whaling/phishing email impersonating the CFO, sent to several finance team members, requesting an urgent wire transfer.", a:"Check the actual sender: SPF/DKIM/DMARC results and the true return-path domain vs the displayed name. Pull the URL/attachment verdict from MDO's detonation results. Confirm whether any recipient clicked the link or replied (Threat Explorer -> user clicks). If zero-hour auto purge already pulled it from all mailboxes, note that in your closure. Because it targets an executive with a financial ask, this is a TP regardless of click-through -- close as TP-blocked/contained, and flag the sender domain for the corp email block list."},
+  {cat:"MDO", sev:"Medium", q:"A user reports a phishing email that MDO's automated investigation already classified as 'No threats found.'", a:"Don't just trust the automated verdict -- MDO's engines miss well-crafted spear-phishing with no malicious payload (pure social-engineering asks, e.g. gift card requests). Manually review headers for spoofing indicators, check if the sending domain is newly registered (WHOIS/MDTI), and check the actual ask in the body. If it's a BEC-style social engineering attempt with no URL/attachment to detonate, override the automated verdict, mark as TP (BEC), and submit for reporting/blocklisting even though the engine found no technical IOC."},
+  {cat:"MDI", sev:"High", q:"MDI raises a DCSync alert for the account MSOL_5373eff83cdc replicating directory changes from a domain controller.", a:"Before panicking over a DCSync alert -- this account naming convention (MSOL_xxxx) is the standard Azure AD Connect sync service account, which legitimately performs directory replication as part of its normal function. Confirm the account matches your known AAD Connect server's service account, confirm the source host is your AAD Connect server (not an unexpected host), and confirm timing aligns with normal sync intervals. If all confirmed, this is a well-known FP pattern -- close as FP/expected sync behavior. Only escalate if the source host is NOT the AAD Connect server."},
+  {cat:"KQL/Hunting", sev:"Info", q:"You need to hunt for a specific process's logon and follow-on activity across Defender Advanced Hunting tables. What's the key gotcha with column names vs classic Windows Event Logs?", a:"Advanced Hunting tables don't use classic Event Log field names. Use Timestamp, not TimeGenerated. Use ActionType, not EventID, to identify the action (e.g. LogonSuccess, ProcessCreated). Join DeviceLogonEvents -> DeviceProcessEvents -> DeviceNetworkEvents on DeviceId and a tight time window around the Timestamp to build the full chain: who logged on, what process ran, and where it connected. Mixing up field naming conventions from SPL/legacy SIEM habits is the most common early mistake when moving to KQL."},
+  {cat:"General", sev:"Info", q:"An O365 mailbox forwarding rule alert fires for an executive's mailbox, forwarding to an external Gmail address.", a:"External auto-forwarding rules are a classic post-compromise persistence technique, so treat with default suspicion. Check Exchange audit logs for who created the rule and when, cross-reference with recent sign-in activity for that account (impossible travel, new device, MFA anomalies around the same timestamp). If the rule was created right after a suspicious sign-in, treat as TP -- likely BEC, remove the rule, force password reset and session revocation. If the user created it themselves for a documented legitimate reason, close as FP but still recommend removing external auto-forward per policy."},
+  {cat:"General", sev:"Medium", q:"You're investigating a large outbound data transfer alert. What's the difference between calling this a DLP concern versus an exfiltration TP?", a:"Volume alone doesn't decide it. Check the destination: is it a sanctioned corporate cloud service (SharePoint/OneDrive/approved SaaS) or an unfamiliar external endpoint/personal cloud storage? Check the file types and whether they match sensitive data classifications. Check the initiating user's normal behavior baseline -- is this consistent with their role. If destination is unapproved and content is sensitive, escalate as exfiltration TP. If destination is sanctioned and volume matches a legitimate business task (e.g. scheduled backup, migration), close as FP/expected business activity."}
+];
+
+// Live feed pulled straight from Hacker News' public search API (Algolia) —
+// free, no key, CORS-enabled, works from any plain browser as long as the
+// page itself is served over http/https (not opened as a local file://).
+const HN_API = "https://hn.algolia.com/api/v1/search_by_date?tags=story&query=" +
+  encodeURIComponent("security OR breach OR vulnerability OR ransomware OR CVE OR exploit") +
+  "&hitsPerPage=10";
+
+let state = {
+  tab: 'flashcards',
+  filter: 'All',
+  deck: [],
+  idx: 0,
+  flipped: false,
+  hit: 0,
+  miss: 0,
+  streak: 0,
+  news: null,
+  newsLoading: false,
+  newsErr: null,
+};
+
+function shuffled(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+function categories(){
+  return ["All", ...Array.from(new Set(CARDS.map(c=>c.cat)))];
+}
+
+function resetDeck(){
+  const pool = state.filter === 'All' ? CARDS : CARDS.filter(c=>c.cat===state.filter);
+  state.deck = shuffled(pool);
+  state.idx = 0;
+  state.flipped = false;
+}
+
+function render(){
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="topbar">
+      <div class="brand">
+        <div class="eyebrow">L1 &rarr; L2 Skill Drill</div>
+        <h1>SOC Drill</h1>
+        <div class="sub">Alert triage flashcards + live threat feed</div>
+      </div>
+      <div class="tabs">
+        <button class="tab-btn ${state.tab==='flashcards'?'active':''}" data-tab="flashcards">Flashcards</button>
+        <button class="tab-btn ${state.tab==='news'?'active':''}" data-tab="news">Threat Feed</button>
+      </div>
+    </div>
+    <div id="content"></div>
+  `;
+  document.querySelectorAll('.tab-btn').forEach(b=>{
+    b.onclick = ()=>{ state.tab = b.dataset.tab; render(); };
+  });
+  if(state.tab==='flashcards') renderFlashcards();
+  else renderNews();
+}
+
+function renderFlashcards(){
+  const content = document.getElementById('content');
+  if(state.deck.length===0) resetDeck();
+
+  content.innerHTML = `
+    <div class="stat-row">
+      <div class="stat hit"><div class="n">${state.hit}</div><div class="l">Correct</div></div>
+      <div class="stat miss"><div class="n">${state.miss}</div><div class="l">Missed</div></div>
+      <div class="stat streak"><div class="n">${state.streak}</div><div class="l">Streak</div></div>
+    </div>
+    <div class="chips">
+      ${categories().map(c=>`<button class="chip ${state.filter===c?'active':''}" data-cat="${c}">${c}</button>`).join('')}
+    </div>
+    <div class="deck-wrap" id="deckwrap"></div>
+  `;
+
+  document.querySelectorAll('.chip').forEach(ch=>{
+    ch.onclick = ()=>{
+      state.filter = ch.dataset.cat;
+      resetDeck();
+      renderFlashcards();
+    };
+  });
+
+  const deckwrap = document.getElementById('deckwrap');
+  if(state.deck.length===0){
+    deckwrap.innerHTML = `<div class="empty">No cards in this category.</div>`;
+    return;
+  }
+  const card = state.deck[state.idx];
+  const done = state.idx >= state.deck.length;
+
+  if(done){
+    deckwrap.innerHTML = `
+      <div class="empty">
+        Deck cleared. ${state.hit} correct / ${state.miss} missed this round.<br><br>
+        <button class="ghost-btn" id="reshuffle">Shuffle & Restart Deck</button>
+      </div>
+    `;
+    document.getElementById('reshuffle').onclick = ()=>{ resetDeck(); state.hit=0; state.miss=0; state.streak=0; renderFlashcards(); };
+    return;
+  }
+
+  deckwrap.innerHTML = `
+    <div class="deck-count">CARD ${state.idx+1} / ${state.deck.length}</div>
+    <div class="card">
+      <div class="card-inner ${state.flipped?'flipped':''}" id="cardInner">
+        <div class="face face-front">
+          <div class="face-head">
+            <span class="sev sev-${card.sev}">${card.sev}</span>
+            <span class="status investigating">INVESTIGATING</span>
+          </div>
+          <div class="cat-tag">${card.cat}</div>
+          <div class="face-body"><div class="prompt">${card.q}</div></div>
+          <div class="hint">tap card to reveal analysis</div>
+        </div>
+        <div class="face face-back">
+          <div class="face-head">
+            <span class="sev sev-${card.sev}">${card.sev}</span>
+            <span class="status closed">CLOSED</span>
+          </div>
+          <div class="cat-tag">${card.cat} &middot; analyst notes</div>
+          <div class="face-body"><div class="answer">${card.a}</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="verdict-row">
+      <button class="vbtn miss" id="missBtn" ${!state.flipped?'disabled':''}>Missed it</button>
+      <button class="vbtn hit" id="hitBtn" ${!state.flipped?'disabled':''}>Got it</button>
+    </div>
+    <div class="deck-actions">
+      <button class="ghost-btn" id="skipBtn">Skip card</button>
+      <button class="ghost-btn" id="reshuffle2">Reshuffle deck</button>
+    </div>
+  `;
+
+  document.getElementById('cardInner').onclick = ()=>{
+    state.flipped = !state.flipped;
+    renderFlashcards();
+  };
+  const missBtn = document.getElementById('missBtn');
+  const hitBtn = document.getElementById('hitBtn');
+  if(state.flipped){
+    missBtn.onclick = (e)=>{ e.stopPropagation(); state.miss++; state.streak=0; nextCard(); };
+    hitBtn.onclick = (e)=>{ e.stopPropagation(); state.hit++; state.streak++; nextCard(); };
+  }
+  document.getElementById('skipBtn').onclick = ()=>{ nextCard(); };
+  document.getElementById('reshuffle2').onclick = ()=>{ resetDeck(); renderFlashcards(); };
+}
+
+function nextCard(){
+  state.idx++;
+  state.flipped = false;
+  renderFlashcards();
+}
+
+function renderNews(){
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="feed-head">
+      <p>Pulls live from Hacker News (public, keyless API), filtered for security-related stories. No AI summarizing here — real posts, real links.</p>
+      <button class="pull-btn" id="pullBtn" ${state.newsLoading?'disabled':''}>${state.newsLoading?'Pulling...':'Pull latest headlines'}</button>
+    </div>
+    <div id="feedBody"></div>
+  `;
+  document.getElementById('pullBtn').onclick = fetchNews;
+  const feedBody = document.getElementById('feedBody');
+
+  if(state.newsLoading){
+    feedBody.innerHTML = `<div class="loading-line"><span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp; scanning the wire...</div>`;
+    return;
+  }
+  if(state.newsErr){
+    feedBody.innerHTML = `<div class="err">${state.newsErr}</div>`;
+    return;
+  }
+  if(!state.news){
+    feedBody.innerHTML = `<div class="empty">No headlines pulled yet. Hit the button above.</div>`;
+    return;
+  }
+  feedBody.innerHTML = state.news.map(item=>`
+    <div class="feed-item">
+      <div class="feed-src">Hacker News &middot; ${item.points} pts &middot; ${item.comments} comments</div>
+      <div class="feed-title"><a href="${item.url}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">${item.headline}</a></div>
+      <div class="feed-sum">by ${item.author} &middot; ${item.date}</div>
+    </div>
+  `).join('') + `<div class="feed-time">pulled ${new Date().toLocaleString()}</div>`;
+}
+
+async function fetchNews(){
+  state.newsLoading = true;
+  state.newsErr = null;
+  if(state.tab==='news') renderNews();
+  try{
+    const resp = await fetch(HN_API);
+    if(!resp.ok) throw new Error("bad response");
+    const data = await resp.json();
+    const hits = (data.hits||[]).filter(h=>h.title);
+    if(hits.length===0) throw new Error("empty");
+    state.news = hits.map(h=>({
+      headline: h.title,
+      url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
+      points: h.points ?? 0,
+      comments: h.num_comments ?? 0,
+      author: h.author || 'unknown',
+      date: new Date(h.created_at).toLocaleDateString()
+    }));
+  }catch(e){
+    state.newsErr = "Couldn't reach Hacker News right now (check your network, or this page may be blocked from making outbound requests if opened as a local file). Try again in a moment.";
+  }
+  state.newsLoading = false;
+  if(state.tab==='news') renderNews();
+}
+
+async function loadExternalCards(){
+  if(!CARDS_SOURCE_URL) return;
+  try{
+    const resp = await fetch(CARDS_SOURCE_URL, {cache:"no-store"});
+    if(!resp.ok) throw new Error("bad response");
+    const extra = await resp.json();
+    if(Array.isArray(extra) && extra.length){
+      const seen = new Set(CARDS.map(c=>c.q));
+      const fresh = extra.filter(c=>c && c.q && !seen.has(c.q));
+      CARDS = CARDS.concat(fresh);
+    }
+  }catch(e){
+    // silently fall back to the bundled deck
+  }
+}
+
+async function init(){
+  await loadExternalCards();
+  resetDeck();
+  render();
+  fetchNews();
+}
+init();
+</script>
+</body>
+</html>
