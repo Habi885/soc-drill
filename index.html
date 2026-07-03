@@ -370,8 +370,8 @@ async function loadExternalCards(){
       const fresh = extra.filter(c=>c && c.q && !seen.has(c.q));
       CARDS = CARDS.concat(fresh);
     }
-  }catch(e){
-    // silently fall back to the bundled deck
+}catch(e){
+    console.error("Card sync failed:", e);
   }
 }
 
