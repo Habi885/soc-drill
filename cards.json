@@ -10,5 +10,53 @@
     "sev": "High",
     "q": "A new firewall rule alert shows a burst of failed SSLVPN logins from a single external IP against multiple usernames within 2 minutes.",
     "a": "Pattern matches a credential-stuffing / brute-force attempt, not a single mistyped password. Check whether any of the attempts succeeded (a single success buried in a burst of failures is the highest priority to check first). Check if the source IP has prior reputation hits (MDTI/AbuseIPDB). If no successful logins, block the source IP at the firewall and close as TP-blocked. If a login succeeded, treat as a confirmed compromise -- force password reset and session revocation for that account immediately, and escalate."
+  },
+  {
+    "cat": "MDI",
+    "sev": "High",
+    "q": "MDI fires a 'Suspected Kerberoasting' alert -- a service account requested an unusually high number of TGS tickets in a short window.",
+    "a": "Kerberoasting targets service accounts because they often have weak or old passwords and elevated privileges. Check which account made the requests and whether it's a legitimate application doing bulk service-ticket work (some backup/monitoring tools do this). Check the source host -- is it the expected app server, or an unexpected workstation? Check the encryption type requested (RC4 downgrade requests are a stronger TP indicator, since attackers request weaker crypto to crack offline). If source host is unexpected or RC4 was requested from a workstation that shouldn't be doing this, treat as TP -- rotate the service account password and investigate the source host for compromise."
+  },
+  {
+    "cat": "MDE",
+    "sev": "Medium",
+    "q": "An alert fires for 'Suspicious Scheduled Task Creation' on a server, task runs a PowerShell script at system startup with a randomized task name.",
+    "a": "Scheduled tasks are a classic persistence mechanism. Pull DeviceEvents for the exact task registration command and the InitiatingProcess. Check what the PowerShell script actually does -- decode any encoded commands. Randomized/nonsensical task names are a moderate suspicion signal but some legitimate software (installers, updaters) also generate random task names. Check whether the parent process is a known software installer vs an unrecognized binary. If the script contacts an external IP/domain or attempts credential access, treat as TP and isolate; if it maps to a known deployed application's updater behavior, close as FP but document the task name pattern for future reference."
+  },
+  {
+    "cat": "MDO",
+    "sev": "Medium",
+    "q": "MDO's Safe Links flags a URL as malicious after a user already clicked it, and Threat Explorer shows the click was allowed before detonation completed.",
+    "a": "This is a real gap worth knowing: Safe Links sometimes allows the first click through before verdict processing finishes (time-of-click vs time-of-detonation lag). Don't assume 'flagged' means 'blocked' -- always check the actual click verdict and timestamp in Threat Explorer, not just the alert severity. If the click was allowed and the destination was later confirmed malicious, treat as TP with potential compromise -- check the endpoint for post-click activity via MDE (DeviceProcessEvents, DeviceNetworkEvents around that timestamp) rather than closing on the strength of the URL verdict alone."
+  },
+  {
+    "cat": "KQL/Hunting",
+    "sev": "Info",
+    "q": "You want to hunt for a specific IOC (a known-bad IP) across all NIB tenants at once in XSIAM using XQL, without writing 20 separate queries.",
+    "a": "Check whether the relevant datasets share a common field name for the source/destination IP across tenants (they often don't -- naming conventions vary by data source, e.g. firewall raw logs vs O365 logs vs EDR logs). Build a dataset reference first if you don't have one, mapping which field holds the IP in each dataset (this is exactly why maintaining a dataset field reference sheet pays off). Where fields align, a single query against a unified dataset or a UNION across datasets is possible; where they don't, you're better off running targeted per-dataset queries than forcing a fragile universal one."
+  },
+  {
+    "cat": "General",
+    "sev": "Medium",
+    "q": "You get a GreyMatter DRP alert for a lookalike domain (typosquat) registered recently that mimics your company's brand.",
+    "a": "Check the domain's registration date (WHOIS/MDTI) -- very recent registration close to the alert date raises suspicion. Check if the domain currently resolves and what it hosts (use a sandboxed browser like ANY.RUN, never visit directly from a corporate endpoint). Check for MX records, which would indicate it's set up for phishing/BEC rather than just squatting. If it hosts a phishing kit or has active MX records, escalate for brand-protection takedown request and block at the email gateway/proxy. If it's parked with no active content and no MX, document and monitor -- close as informational with a recommendation to watch, since takedown requests for dormant lookalikes often get deprioritized anyway."
+  },
+  {
+    "cat": "MDE",
+    "sev": "High",
+    "q": "MDE alert: 'Ransomware behavior detected' with automated remediation showing multiple files renamed with a new extension across a file share.",
+    "a": "Treat as a live incident, not a routine alert -- the priority is containment speed over full analysis. First check MDE's automated response status: was the device auto-isolated? If not, isolate immediately to stop lateral encryption via the share. Identify the initiating process and account, and check DeviceLogonEvents for how that account authenticated (compromised credentials vs local execution). Check other devices touching the same file share for the same rename pattern (lateral spread). This is an escalate-immediately scenario per your IR playbook -- notify SOC leads and NIB IT concurrently with containment, don't wait for full root-cause before escalating."
+  },
+  {
+    "cat": "MDCA",
+    "sev": "Info",
+    "q": "MDCA flags 'impossible travel' for a user logging in from Bangalore and then from a US IP forty minutes later.",
+    "a": "Impossible travel is one of the noisiest MDCA detections because of VPNs, corporate proxies, and cloud-based mail clients that route through different regions. Check if the 'travel' correlates with a known corporate VPN exit node or a cloud service IP range (Microsoft/Google datacenter ranges commonly trigger false positives). Check MFA status on both sign-ins -- if both were MFA-satisfied and one traces to a known VPN egress, close as FP. If MFA was bypassed or one sign-in used a legacy auth protocol, treat as TP and investigate for compromised credentials."
+  },
+  {
+    "cat": "General",
+    "sev": "Medium",
+    "q": "A vulnerability scan alert flags a critical unpatched CVE on an internet-facing server, but the patch management team says it was already remediated last week.",
+    "a": "Don't just accept either side at face value -- verify directly. Check the actual patch/build version on the asset via your EDR or asset inventory rather than trusting either the scanner or the team's claim. Scanners can show stale results if they haven't rescanned since the patch, and patch teams can occasionally mis-report which assets were covered in a batch. If the version confirms the patch is applied, close as FP due to stale scan data and request a rescan. If the version shows it's still vulnerable, escalate as a TP gap in patch coverage regardless of what was reported."
   }
 ]
