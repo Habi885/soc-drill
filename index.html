@@ -353,8 +353,8 @@ async function fetchNews(){
       date: new Date(h.created_at).toLocaleDateString()
     }));
   }catch(e){
-    state.newsErr = "Couldn't reach Hacker News right now (check your network, or this page may be blocked from making outbound requests if opened as a local file). Try again in a moment.";
-  }
+console.error("HN fetch failed:", e);
+    state.newsErr = "Couldn't reach Hacker News — error: " + (e && e.message ? e.message : String(e));  }
   state.newsLoading = false;
   if(state.tab==='news') renderNews();
 }
