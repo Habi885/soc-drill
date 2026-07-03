@@ -145,7 +145,7 @@ let CARDS = [
 // free, no key, CORS-enabled, works from any plain browser as long as the
 // page itself is served over http/https (not opened as a local file://).
 const HN_API = "https://hn.algolia.com/api/v1/search_by_date?tags=story&query=" +
-  encodeURIComponent("security OR breach OR vulnerability OR ransomware OR CVE OR exploit") +
+  encodeURIComponent("security") +
   "&hitsPerPage=10";
 
 let state = {
@@ -343,7 +343,7 @@ async function fetchNews(){
     if(!resp.ok) throw new Error("bad response");
     const data = await resp.json();
     const hits = (data.hits||[]).filter(h=>h.title);
-    if(hits.length===0) throw new Error("empty");
+    if(hits.length===0){ state.news = []; state.newsLoading = false; if(state.tab==='news') renderNews(); return; }
     state.news = hits.map(h=>({
       headline: h.title,
       url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
